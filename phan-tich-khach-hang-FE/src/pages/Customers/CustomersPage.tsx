@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -8,22 +8,63 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
+import { getCustomers, getSegments, CustomerDTO, SegmentDTO } from "../../services/api";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
 const CustomersPage: React.FC = () => {
+  const [customers, setCustomers] = useState<CustomerDTO[]>([]);
+  const [segments, setSegments] = useState<SegmentDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedSegment, setSelectedSegment] = useState<number | undefined>(undefined);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    fetchData();
+  }, [selectedSegment]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [customersData, segmentsData] = await Promise.all([
+        getCustomers(selectedSegment),
+        getSegments(),
+      ]);
+      setCustomers(customersData);
+      setSegments(segmentsData);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredCustomers = customers.filter(customer =>
+    customer.id.toString().includes(searchTerm) ||
+    customer.education.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.maritalStatus.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   const barData = {
-    labels: ["Nhóm A", "Nhóm B", "Nhóm C", "Nhóm D"],
+    labels: segments.map(s => s.segmentName),
     datasets: [
       {
         label: "Số lượng khách hàng",
-        data: [1250, 890, 756, 604],
-        backgroundColor: ["#4f46e5", "#06b6d4", "#f97316", "#a855f7"],
+        data: segments.map(s => s.customerCount),
+        backgroundColor: ["#4f46e5", "#06b6d4", "#f97316", "#a855f7", "#10b981"],
         borderRadius: 6,
         barThickness: 35,
       },
     ],
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-xl text-gray-600">Đang tải dữ liệu...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -41,10 +82,9 @@ const CustomersPage: React.FC = () => {
           <input
             className="border rounded-lg px-3 py-2 text-sm"
             placeholder="Tìm kiếm khách hàng..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <button className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
-            + Thêm mới
-          </button>
           <button className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">
             Xuất CSV
           </button>
@@ -53,17 +93,17 @@ const CustomersPage: React.FC = () => {
 
       {/* Filters */}
       <div className="flex gap-4">
-        <select className="border rounded-lg px-3 py-2 text-sm">
-          <option>Tất cả nhóm</option>
-          <option>Nhóm A</option>
-          <option>Nhóm B</option>
-          <option>Nhóm C</option>
-          <option>Nhóm D</option>
-        </select>
-        <select className="border rounded-lg px-3 py-2 text-sm">
-          <option>Tất cả trạng thái</option>
-          <option>Hoạt động</option>
-          <option>Không hoạt động</option>
+        <select 
+          className="border rounded-lg px-3 py-2 text-sm"
+          value={selectedSegment ?? ''}
+          onChange={(e) => setSelectedSegment(e.target.value ? parseInt(e.target.value) : undefined)}
+        >
+          <option value="">Tất cả nhóm</option>
+          {segments.map(segment => (
+            <option key={segment.segmentId} value={segment.segmentId}>
+              {segment.segmentName}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -72,68 +112,45 @@ const CustomersPage: React.FC = () => {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-gray-600">
             <tr>
-              <th className="text-left py-3 px-4">Tên</th>
-              <th className="text-left py-3 px-4">Email</th>
+              <th className="text-left py-3 px-4">ID</th>
+              <th className="text-left py-3 px-4">Học vấn</th>
+              <th className="text-left py-3 px-4">Tình trạng hôn nhân</th>
+              <th className="text-left py-3 px-4">Thu nhập ($)</th>
               <th className="text-left py-3 px-4">Nhóm</th>
-              <th className="text-left py-3 px-4">Chi tiêu ($)</th>
-              <th className="text-left py-3 px-4">Trạng thái</th>
-              <th className="text-left py-3 px-4">Ngày tham gia</th>
-              <th className="text-center py-3 px-4">Thao tác</th>
             </tr>
           </thead>
           <tbody>
-            {[
-              {
-                name: "Nguyễn Văn A",
-                email: "a.nguyen@example.com",
-                group: "Nhóm A",
-                spend: "1,250",
-                status: "Hoạt động",
-                joined: "2025-10-10",
-              },
-              {
-                name: "Trần Thị B",
-                email: "b.tran@example.com",
-                group: "Nhóm B",
-                spend: "980",
-                status: "Không hoạt động",
-                joined: "2025-09-21",
-              },
-              {
-                name: "Lê Văn C",
-                email: "c.le@example.com",
-                group: "Nhóm C",
-                spend: "720",
-                status: "Hoạt động",
-                joined: "2025-09-15",
-              },
-            ].map((c, i) => (
-              <tr key={i} className="border-t hover:bg-gray-50">
-                <td className="py-3 px-4 font-medium">{c.name}</td>
-                <td className="py-3 px-4">{c.email}</td>
-                <td className="py-3 px-4">{c.group}</td>
-                <td className="py-3 px-4">{c.spend}</td>
-                <td className="py-3 px-4">
-                  <span
-                    className={`px-2 py-1 text-xs rounded-full ${
-                      c.status === "Hoạt động"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-gray-200 text-gray-600"
-                    }`}
-                  >
-                    {c.status}
-                  </span>
-                </td>
-                <td className="py-3 px-4">{c.joined}</td>
-                <td className="py-3 px-4 text-center">
-                  <button className="text-blue-600 hover:underline">
-                    Xem
-                  </button>
+            {filteredCustomers.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-gray-500">
+                  Không có dữ liệu khách hàng
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredCustomers.slice(0, 50).map((customer) => {
+                const segment = segments.find(s => s.segmentId === customer.segment);
+                return (
+                  <tr key={customer.id} className="border-t hover:bg-gray-50">
+                    <td className="py-3 px-4 font-medium">{customer.id}</td>
+                    <td className="py-3 px-4">{customer.education}</td>
+                    <td className="py-3 px-4">{customer.maritalStatus}</td>
+                    <td className="py-3 px-4">${customer.income.toLocaleString()}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700">
+                        {segment?.segmentName || `Nhóm ${customer.segment}`}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
+        {filteredCustomers.length > 50 && (
+          <div className="py-4 px-4 text-center text-sm text-gray-500 border-t">
+            Hiển thị 50/{filteredCustomers.length} khách hàng
+          </div>
+        )}
       </div>
 
       {/* Chart */}

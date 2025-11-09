@@ -1,4 +1,5 @@
 // React import not required with new JSX transform
+import { useEffect, useState } from 'react'
 import {
   PieChart,
   Pie,
@@ -16,46 +17,84 @@ import {
 } from 'recharts'
 import ChartCard from '../../components/ChartCard'
 import StatCard from '../../components/StatsCard'
+import { getDashboard, DashboardDTO } from '../../services/api'
 
-const clusterData = [
-  { name: 'Nhóm A', value: 1250, percentage: 35, avgSpending: 4500 },
-  { name: 'Nhóm B', value: 890, percentage: 25, avgSpending: 3200 },
-  { name: 'Nhóm C', value: 756, percentage: 21, avgSpending: 2800 },
-  { name: 'Nhóm D', value: 604, percentage: 19, avgSpending: 1950 },
-]
-
-const incomeDistribution = [
-  { name: 'Thu nhập Thấp', value: 450 },
-  { name: 'Thu nhập Trung bình', value: 850 },
-  { name: 'Thu nhập Cao', value: 950 },
-]
-
-const educationDistribution = [
-  { name: 'THCS', value: 300 },
-  { name: 'THPT', value: 850 },
-  { name: 'Đại học', value: 1800 },
-]
-
-const avgSpendingByCluster = [
-  { group: 'Nhóm A', spending: 4500 },
-  { group: 'Nhóm B', spending: 3200 },
-  { group: 'Nhóm C', spending: 2800 },
-  { group: 'Nhóm D', spending: 1950 },
-]
-
-const campaignResponse = [
-  { campaign: 'Chiến dịch 1', positive: 320, negative: 180 },
-  { campaign: 'Chiến dịch 2', positive: 290, negative: 210 },
-  { campaign: 'Chiến dịch 3', positive: 450, negative: 150 },
-  { campaign: 'Chiến dịch 4', positive: 380, negative: 220 },
-]
-
-const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b']
+const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
 
 export default function DashboardPage() {
-  const totalCustomers = clusterData.reduce((s, g) => s + g.value, 0)
-  const avgSpending = Math.round(clusterData.reduce((s, g) => s + g.avgSpending, 0) / (clusterData.length || 1))
-  const marketingResponseRate = Math.round((campaignResponse.reduce((s, c) => s + c.positive, 0) / campaignResponse.reduce((s, c) => s + c.positive + c.negative, 0)) * 100)
+  const [dashboardData, setDashboardData] = useState<DashboardDTO | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        setLoading(true)
+        const data = await getDashboard()
+        setDashboardData(data)
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchDashboard()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex h-screen bg-gray-50 items-center justify-center">
+        <div className="text-xl text-gray-600">Đang tải dữ liệu...</div>
+      </div>
+    )
+  }
+
+  if (!dashboardData) {
+    return (
+      <div className="flex h-screen bg-gray-50 items-center justify-center">
+        <div className="text-xl text-red-600">Không thể tải dữ liệu</div>
+      </div>
+    )
+  }
+
+  // Transform segment distribution for chart
+  const clusterData = Object.entries(dashboardData.segmentDistribution).map(([segmentId, count]) => {
+    const segment = dashboardData.topSegments.find(s => s.segmentId === parseInt(segmentId))
+    return {
+      name: segment?.segmentName || `Nhóm ${segmentId}`,
+      value: count,
+      percentage: Math.round((count / dashboardData.totalCustomers) * 100),
+      avgSpending: segment?.avgSpending || 0,
+    }
+  })
+
+  // Transform income distribution by segment
+  const incomeDistribution = Object.entries(dashboardData.incomeBySegment).map(([range, segments]) => ({
+    name: range === 'Low' ? 'Thu nhập Thấp' : range === 'Medium' ? 'Thu nhập Trung bình' : 'Thu nhập Cao',
+    value: Object.values(segments).reduce((sum, count) => sum + count, 0),
+  }))
+
+  // Transform education distribution
+  const educationDistribution = Object.entries(dashboardData.educationBySegment).map(([level, segments]) => ({
+    name: level === 'Basic' ? 'THCS' : level === 'Graduate' ? 'Đại học' : 'Sau ĐH',
+    value: Object.values(segments).reduce((sum, count) => sum + count, 0),
+  }))
+
+  // Transform marital status distribution
+  const maritalDistribution = Object.entries(dashboardData.maritalStatusBySegment).map(([status, segments]) => ({
+    name: status === 'Married' ? 'Đã kết hôn' : status === 'Single' ? 'Độc thân' : 'Khác',
+    value: Object.values(segments).reduce((sum, count) => sum + count, 0),
+  }))
+
+  // Average spending by cluster from top segments
+  const avgSpendingByCluster = dashboardData.topSegments.map(segment => ({
+    group: segment.segmentName,
+    spending: Math.round(segment.avgSpending),
+  }))
+
+  const totalCustomers = dashboardData.totalCustomers
+  const avgSpending = Math.round(dashboardData.avgSpending)
+  const marketingResponseRate = Math.round(dashboardData.marketingResponseRate)
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -134,21 +173,6 @@ export default function DashboardPage() {
 
             {/* Campaign Response and Spending - Side by Side */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              <ChartCard title="Phản hồi chiến dịch" subtitle="Phản hồi tích cực theo chiến dịch">
-                <div style={{ width: '100%', height: 280 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={campaignResponse}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="campaign" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line type="monotone" dataKey="positive" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-
               <ChartCard title="Chi tiêu trung bình theo nhóm" subtitle="So sánh mức chi tiêu">
                 <div style={{ width: '100%', height: 280 }}>
                   <ResponsiveContainer width="100%" height="100%">
@@ -162,32 +186,32 @@ export default function DashboardPage() {
                   </ResponsiveContainer>
                 </div>
               </ChartCard>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <ChartCard title="Tỷ lệ theo thu nhập" subtitle="Phân bổ theo mức thu nhập">
-                <div style={{ width: '100%', height: 180 }}>
+              <ChartCard title="Phân bố theo thu nhập" subtitle="Phân bổ theo mức thu nhập">
+                <div style={{ width: '100%', height: 280 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={incomeDistribution} layout="vertical" margin={{ left: 20 }}>
+                    <BarChart data={incomeDistribution} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" />
-                      <YAxis dataKey="name" type="category" width={120} />
+                      <XAxis dataKey="name" />
+                      <YAxis />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#8b5cf6" radius={[6, 6, 6, 6]} />
+                      <Bar dataKey="value" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </ChartCard>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <ChartCard title="Trình độ học vấn" subtitle="Phân bố theo học vấn">
-                <div style={{ width: '100%', height: 320, paddingTop: '20px' }}>
+                <div style={{ width: '100%', height: 280 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
+                    <PieChart>
                       <Pie 
                         data={educationDistribution} 
                         cx="50%" 
-                        cy="45%" 
-                        outerRadius={90} 
+                        cy="50%" 
+                        outerRadius={80} 
                         dataKey="value"
                         label={(entry: any) => `${entry.name}: ${((entry.value / educationDistribution.reduce((sum, item) => sum + item.value, 0)) * 100).toFixed(0)}%`}
                         labelLine={{ stroke: '#999', strokeWidth: 1 }}
@@ -197,21 +221,20 @@ export default function DashboardPage() {
                         ))}
                       </Pie>
                       <Tooltip />
-                      <Legend verticalAlign="bottom" height={36} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
               </ChartCard>
 
               <ChartCard title="Tình trạng hôn nhân" subtitle="Phân bố theo tình trạng">
-                <div style={{ width: '100%', height: 180 }}>
+                <div style={{ width: '100%', height: 280 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={[{ name: 'Đã kết hôn', value: 520 }, { name: 'Độc thân', value: 380 }, { name: 'Ly hôn', value: 50 }]}>
+                    <BarChart data={maritalDistribution}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#ec4899" radius={[6, 6, 6, 6]} />
+                      <Bar dataKey="value" fill="#ec4899" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
